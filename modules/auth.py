@@ -1,8 +1,8 @@
 import logging
 from flask import Blueprint, request, flash, redirect, url_for, render_template, session
 from werkzeug.security import generate_password_hash, check_password_hash
-from .models import User
-from .database import load_data, save_data
+from .database import query_all_users, db
+
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -25,30 +25,28 @@ def register():
                 flash("Missing username, password, or email", "error")
                 return redirect(url_for('auth.register'))
 
-            data = load_data()
-            users = data.get('users', [])
-            existing_user = next((user for user in users if user['username'] == username), None)
+            users_collection = db['users']
+            existing_user = users_collection.find_one({'username': username})
 
             if existing_user:
                 logger.error(f"➖ Username '{username}' already exists during registration")
                 flash("Username already exists", "error")
                 return redirect(url_for('auth.register'))  # Redirect back to registration
 
+            # Hash the password
             hashed_password = generate_password_hash(password)
-            new_user = {
-                'username': username,
-                'password': hashed_password,
-                'email': email
-            }
-            users.append(new_user)
-            data['users'] = users
-            save_data(data)
+
+            # Insert the new user into the database
+            users_collection.insert_one({
+                'username': username, 
+                'password': hashed_password, 
+                'email': email})
 
             logger.info(f"➕ User '{username}' registered successfully")
             flash("Registration successful", "success")
-            return redirect(url_for('auth.login')) # Redirect to login after success
+            return redirect(url_for('welcome'))
 
-        except Exception as e:
+        except Exception as e :
             logger.error(f"➖ Error during registration: {e}")
             flash("Error during registration", "error")
             return redirect(url_for('auth.register'))
@@ -68,11 +66,10 @@ def login():
                 flash("Missing username or password", "error")
                 return redirect(url_for('auth.login'))
 
-            data = load_data()
-            users = data.get('users', [])
-            user = next((user for user in users if user['username'] == username), None)
+            users_collection = db['users']
+            user = users_collection.find_one({'username': username})
 
-            if user and check_password_hash(user['password'], password):
+            if user and check_password_hash(user['password'], password):               
                 session['username'] = username
                 logger.info(f"🔑 User: {username} has logged in successfully")
                 flash(f"Welcome {username}", "success")
